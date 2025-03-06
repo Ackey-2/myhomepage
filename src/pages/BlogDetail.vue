@@ -101,6 +101,8 @@
 <script>
 import { getBlogList, formatDate, getBlogLikes, hasUserLiked, toggleLikeBlog, getFullBlogContent } from '../utils/blogUtils';
 import { marked } from 'marked';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
 
 export default {
   name: 'BlogDetailPage',
@@ -140,6 +142,8 @@ export default {
           this.calculateReadingTime();
           // 添加滚动事件监听
           this.setupScrollListener();
+          // 直接渲染数学公式
+          this.renderMathInElement();
         }, 100);
       }
     } catch (error) {
@@ -170,7 +174,7 @@ export default {
           // 去除Markdown的前部元数据
           const contentWithoutFrontmatter = this.removeFrontMatter(markdownContent);
           
-          // 使用marked转换为HTML
+          // 使用基本的marked渲染，不处理数学公式
           this.blogContent = marked(contentWithoutFrontmatter);
         } else {
           // 如果无法获取博客内容，则显示一个后备内容
@@ -330,6 +334,110 @@ export default {
       const readingTime = Math.max(1, Math.ceil(wordCount / 200));
       
       this.estimatedReadingTime = readingTime;
+    },
+    // 新增方法：直接在DOM中查找和渲染数学公式
+    renderMathInElement() {
+      if (!this.$refs.markdownContent) return;
+      
+      try {
+        const content = this.$refs.markdownContent;
+        
+        // 查找所有文本节点
+        const textNodes = [];
+        const walker = document.createTreeWalker(
+          content,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false
+        );
+        
+        let node;
+        while (node = walker.nextNode()) {
+          textNodes.push(node);
+        }
+        
+        // 处理包含数学公式的文本节点
+        textNodes.forEach(textNode => {
+          const text = textNode.nodeValue;
+          
+          // 检查是否包含数学公式
+          if (text.includes('$$') || text.includes('$')) {
+            const parent = textNode.parentNode;
+            
+            // 处理行间公式 $$...$$
+            if (text.includes('$$')) {
+              const parts = text.split(/(\$\$[\s\S]+?\$\$)/g);
+              if (parts.length > 1) {
+                const fragment = document.createDocumentFragment();
+                
+                parts.forEach(part => {
+                  if (part.startsWith('$$') && part.endsWith('$$')) {
+                    try {
+                      // 提取公式内容
+                      const formula = part.substring(2, part.length - 2).trim();
+                      
+                      // 创建一个新元素来放置渲染后的公式
+                      const span = document.createElement('span');
+                      span.innerHTML = katex.renderToString(formula, {
+                        displayMode: true,
+                        throwOnError: false
+                      });
+                      fragment.appendChild(span);
+                    } catch (e) {
+                      console.error('渲染行间公式错误:', e);
+                      const textNode = document.createTextNode(part);
+                      fragment.appendChild(textNode);
+                    }
+                  } else {
+                    const textNode = document.createTextNode(part);
+                    fragment.appendChild(textNode);
+                  }
+                });
+                
+                // 替换原始节点
+                parent.replaceChild(fragment, textNode);
+              }
+            }
+            
+            // 处理行内公式 $...$
+            else if (text.includes('$')) {
+              const parts = text.split(/(\$[^\$]+?\$)/g);
+              if (parts.length > 1) {
+                const fragment = document.createDocumentFragment();
+                
+                parts.forEach(part => {
+                  if (part.startsWith('$') && part.endsWith('$')) {
+                    try {
+                      // 提取公式内容
+                      const formula = part.substring(1, part.length - 1).trim();
+                      
+                      // 创建一个新元素来放置渲染后的公式
+                      const span = document.createElement('span');
+                      span.innerHTML = katex.renderToString(formula, {
+                        displayMode: false,
+                        throwOnError: false
+                      });
+                      fragment.appendChild(span);
+                    } catch (e) {
+                      console.error('渲染行内公式错误:', e);
+                      const textNode = document.createTextNode(part);
+                      fragment.appendChild(textNode);
+                    }
+                  } else {
+                    const textNode = document.createTextNode(part);
+                    fragment.appendChild(textNode);
+                  }
+                });
+                
+                // 替换原始节点
+                parent.replaceChild(fragment, textNode);
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.error('渲染数学公式时出错:', e);
+      }
     }
   }
 }
@@ -592,6 +700,21 @@ export default {
   color: #555;
   font-style: italic;
   margin: 20px 0;
+}
+
+/* 添加数学公式相关样式 */
+.markdown-content :deep(.katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 10px 0;
+}
+
+.markdown-content :deep(.katex) {
+  font-size: 1.1em;
+}
+
+.markdown-content :deep(.katex-error) {
+  color: #f44336;
 }
 
 /* 响应式设计 */
